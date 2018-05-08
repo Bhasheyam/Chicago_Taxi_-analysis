@@ -1,0 +1,210 @@
+%pyspark
+import gc
+#reading the datafrom S3
+data = sc.textFile("s3://bhasheyambigdata/Taxi_Trips.csv")
+data.take(2)
+
+# printing sample data
+[u'Trip ID,Taxi ID,Trip Start Timestamp,Trip End Timestamp,Trip Seconds,Trip Miles,Pickup Census Tract,Dropoff Census Tract,Pickup Community Area,Dropoff Community Area,Fare,Tips,Tolls,Extras,Trip Total,Payment Type,Company,Pickup Centroid Latitude,Pickup Centroid Longitude,Pickup Centroid Location,Dropoff Centroid Latitude,Dropoff Centroid Longitude,Dropoff Centroid  Location,Community Areas',
+ u'0600bad12fd21f47978933fca9ff6f7053add238,44e35d9801892913e340f343010f26bd3cc4b5c1daaf93e296f046aa60786c40e1e8bba1859f8f25cd54d642b656da1013604a3a09e6420dca1ea033ec93c147,07/18/2017 12:15:00 PM,07/18/2017 12:15:00 PM,294,0.64,17031081600,17031081800,8,8,$5.50,$2.00,$0.00,$0.00,$8.00,Credit Card,,41.892072635,-87.628874157,POINT (-87.6288741572 41.8920726347),41.89321636,-87.63784421,POINT (-87.6378442095 41.8932163595),37',
+ 
+
+
+#Spliting the data in the memory
+data1 = data.map(lambda a: a.split(","))
+Data =data1.filter(lambda lines: lines[0] != "Trip ID" )
+
+
+# count the number of instance
+total = Data.count()
+print "Total number of Instance  used in the analysis :",total
+
+Total number of Instance  used in the analysis : 112860054
+
+
+
+import gc 
+data1.unpersist()
+del data1
+gc.collect()
+# deleting the reference with all columns and releasing the memory
+
+#Removing the column with less significants to have optimal memory
+Taxi_data = Data.map(lambda lines:(lines[2],lines[4],lines[5],lines[8],lines[9],lines[10],lines[11],lines[12],lines[13],lines[14],lines[15],lines[16]))
+Taxi_data.take(5)
+
+#Removing the data reference to keep the memory clean and optimized
+import gc 
+Data.unpersist()
+del Data
+gc.collect()
+
+
+#cleaning the data removed empty rows 
+
+Taxi_data = Taxi_data.filter(lambda x: x[1] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[2] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[5] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[6] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[7] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[8] is not u'')
+Taxi_data = Taxi_data.filter(lambda x: x[9] is not u'')
+
+
+
+
+# following function is used to find the sum the total of the column with integer values. 
+# column number is given as input, so it will filter the column and sum all the values also clean the memory once the calculation is done.
+import gc
+def findint(rdd,num,display,display1,tempstatcollector):
+    temp = rdd.map(lambda lines: (lines[num],int(lines[num])))
+    counting = temp.values().sum()
+    print display,counting
+    print display1,counting / 3600
+    tempstatcollector.append(counting / 3600)
+    temp.unpersist()
+    del temp
+    gc.collect()
+    return tempstatcollector
+
+	
+
+# following function is used to find the sum the total of the column with float values. 
+# column number is given as input, so it will filter the column and sum all the values also clean the memory once the calculation is done.	
+import gc
+def findfloat(rdd,num,display,tempstatcollector):
+    temp = rdd.map(lambda lines: (lines[num],float(lines[num][1:4])))
+    counting = temp.values().sum()
+    print display,counting
+    tempstatcollector.append(counting)
+    temp.unpersist()
+    del temp
+    gc.collect()
+    return tempstatcollector	
+
+# following function is used to find the sum the total of the column with float values. 
+# column number is given as input, so it will filter the column and sum all the values also clean the memory once the calculation is done.		
+import gc
+def findfloat0(rdd,num,display,tempstatcollector):
+    temp = rdd.map(lambda lines: (lines[num],float(lines[num])))
+    counting = temp.values().sum()
+    print display,counting
+    tempstatcollector.append(counting)
+    temp.unpersist()
+    del temp
+    gc.collect()
+    return tempstatcollector
+
+# following function is used to find the count of the column values. 
+# column number is given as input, so it will filter the column and count all the values also clean the memory once the calculation is done.		
+import gc
+def countvalue(rdd,num,tempstatcollector):
+    tempans = rdd.map(lambda lines: (lines[num],1))
+    ans = tempans.reduceByKey(lambda x,y:x+y)
+    coll = ans.collect()
+    tempstatcollector.append(coll)
+    print coll
+    tempans.unpersist()
+    del tempans
+    gc.collect()
+    return tempstatcollector
+	
+#function which consolidata all the stats by calling three functions defined to perform those.	
+def stats(rdd,year,tempstatcollector):
+	findint(rdd,1,"In "+year+" number of seconds taxi service used","In "+year+" number of hours taxi service used",tempstatcollector)
+	tempstatcollector = findfloat(rdd,2,"In "+year+" miles travelled by users",tempstatcollector)
+	tempstatcollector = findfloat(rdd,5,"In "+year+" fare spent by all user",tempstatcollector)
+	tempstatcollector = findfloat(rdd,6,"In "+year+"  tips given by all user",tempstatcollector)
+	tempstatcollector = findfloat(rdd,7,"In "+year+"  tolls paid by all user",tempstatcollector)
+	tempstatcollector = findfloat(rdd,8,"In "+year+"  Extra paid by all user",tempstatcollector)
+	tempstatcollector = findfloat(rdd,9,"In "+year+"  Trip_total_includes paid by all user",tempstatcollector)
+	tempstatcollector= countvalue(rdd,10,tempstatcollector)
+	return tempstatcollector	
+
+Total:
+In total number of seconds taxi service used 83345858073 second
+In total number of hours taxi service used 23151627 hours 
+In total miles travelled by users 313221448.78
+In total fare spent by all user 1366630691.7
+In total  tips given by all user 140897324.4
+In total  tolls paid by all user 884848.4
+In total  Extra paid by all user 91158753.2
+In total  Trip_total_includes paid by all user 1597501966.0
+
+[(u'Mobile', 396), (u'Unknown', 227613), (u'Prcard', 14163), (u'Cash', 67694669), (u'Pcard', 29700), (u'Credit Card', 42875936), (u'No Charge', 665345), (u'Way2ride', 23), (u'Dispute', 61084)]
+
+
+
+# spliting the dataset into years
+year = Taxi_data.map(lambda lines: (lines[0][6:10],lines))
+
+#To find the trend for the years calculating stats for different years
+import gc
+loop = ["2013","2014","2015","2016","2017"]
+for l in loop:
+	tempyear = year.filter(lambda lines: lines[0] == l)
+	tempyear = tempyear.map(lambda lines:lines[1])
+	print "number of Instance in " +l + " :",tempyear.count()
+	#calculate Stat
+	print stats(tempyear, l,[l])
+	tempyear.unpersist()
+	del tempyear
+	gc.collect()
+
+Sample data
+[(u'03/08/2013 06:30:00 PM', u'240', u'0.87', u'8', u'', u'$5.05', u'$0.00', u'$0.00', u'$1.00', u'$6.05', u'Cash', u''),
+ (u'03/05/2013 01:45:00 PM', u'720', u'2.21', u'8', u'', u'$8.45', u'$2.00', u'$0.00', u'$0.00', u'$10.45', u'Credit Card', u''), 
+ (u'07/07/2013 01:00:00 PM', u'660', u'0.3', u'7', u'8', u'$9.45', u'$2.00', u'$0.00', u'$0.00', u'$11.45', u'Credit Card', u'Choice Taxi Association'),
+ (u'08/27/2013 07:45:00 AM', u'2040', u'13.3', u'8', u'56', u'$30.05', u'$0.00', u'$0.00', u'$2.00', u'$32.05', u'Cash', u'Dispatch Taxi Affiliation'), 
+ (u'05/03/2013 09:15:00 PM', u'900', u'6.5', u'4', u'8', u'$16.05', u'$0.00', u'$0.00', u'$1.00', u'$17.05', u'Cash', u'')]	
+ 
+ number of Instance in 2013 : 25742055
+In 2013 number of seconds taxi service used 19002718380
+In 2013 number of hours taxi service used 5278532
+In 2013 miles travelled by users 58020100.69
+In 2013 fare spent by all user 315145120.65
+In 2013  tips given by all user 22509979.09
+In 2013  tolls paid by all user 415256.16
+ 
+ 
+ 
+ 
+ # spliting the data according to data according to time
+timesplit = Taxi_data.map(lambda lines: (lines[0][20:22],lines))
+import gc
+timeam = timesplit.filter(lambda lines : lines[0] == "AM")
+timepm = timesplit.filter(lambda lines : lines[0] == "PM")
+timesplit.unpersist()
+del timesplit
+gc.collect()
+
+#mapping to the time in the AM and PM formated Dataset
+timeam = timeam.map(lambda lines: (lines[0][11:13],lines))
+timepm = timepm.map(lambda lines: (lines[0][11:13],lines))
+
+#Calculating the stat of different hours see busy hours.
+import gc
+check = ["01","02","03","04","05","06","07","08","09","10","11","12"]
+for l in check:
+	tempyear = timeam.filter(lambda lines: lines[0] == l)
+	tempyear = tempyear.map(lambda lines:lines[1])
+	print "number of Instance in " +l + " AM:",tempyear.count()
+	#calculate Stat
+	print stats(tempyear, l+"AM",[l+"AM"])
+	tempyear.unpersist()
+	del tempyear
+	gc.collect()
+
+for l in check:
+	tempyear = timepm.filter(lambda lines: lines[0] == l)
+	tempyear = tempyear.map(lambda lines:lines[1])
+	print "number of Instance in " +l  + " PM:",tempyear.count()
+	#calculate Stat
+	print stats(tempyear, l+"PM" ,[l+"PM"])
+	tempyear.unpersist()
+	del tempyear
+	gc.collect()
+
+
+ 
+	
